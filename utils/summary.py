@@ -117,6 +117,49 @@ def generate_summary():
             else:
                 st.write("No reading activity found for the timeline.")
 
+            # Query for "Minutes Read Per Month"
+            minutes_query = """
+                SELECT 
+                    strftime('%Y-%m', datetime(psd.start_time, 'unixepoch', 'localtime')) AS reading_month,
+                    SUM(psd.duration) / 60.0 AS minutes_read
+                FROM page_stat_data psd
+                WHERE strftime('%Y', datetime(psd.start_time, 'unixepoch', 'localtime')) = strftime('%Y', 'now')
+                GROUP BY reading_month
+                ORDER BY reading_month;
+            """
+            cursor.execute(minutes_query)
+            minutes_data = cursor.fetchall()
+
+            # Create DataFrame for "Minutes Read Per Month"
+            df_minutes = pd.DataFrame(minutes_data, columns=["Month", "Minutes Read"])
+            df_minutes["Month"] = pd.to_datetime(df_minutes["Month"])
+
+            # Ensure all months of the current year are included
+            current_year = datetime.now().year
+            all_months = pd.date_range(start=f"{current_year}-01-01", end=f"{current_year}-12-31", freq="MS")
+            df_minutes = df_minutes.set_index("Month").reindex(all_months, fill_value=0).rename_axis("Month").reset_index()
+
+            # Plot Line Graph
+            st.write("### Minutes Read Per Month (Spanning the Year)")
+            if not df_minutes.empty:
+                fig, ax = plt.subplots(figsize=(12, 6))
+                ax.plot(df_minutes["Month"], df_minutes["Minutes Read"], marker="o", linestyle="-", color="blue")
+                ax.set_xlabel("Month")
+                ax.set_ylabel("Minutes Read")
+                ax.set_title("Minutes Read Per Month (Spanning the Year)")
+                ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter("%b"))  # Format X-axis as "Month"
+                ax.xaxis.set_major_locator(plt.matplotlib.dates.MonthLocator())  # Show ticks for each month
+                plt.xticks(rotation=45, ha="right")  # Rotate X-axis labels
+
+                # Annotate Points with Values
+                for x, y in zip(df_minutes["Month"], df_minutes["Minutes Read"]):
+                    ax.text(x, y + 5, f"{y:.1f}", ha="center", fontsize=8, color="black")  # Display value above each point
+
+                st.pyplot(fig)
+            else:
+                st.write("No reading activity found for this year.")
+
+
             # Graph: Pages Read Per Book
             st.write("### Pages Read Per Book")
             fig, ax = plt.subplots(figsize=(10, 6))
