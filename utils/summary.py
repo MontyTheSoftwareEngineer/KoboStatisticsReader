@@ -6,6 +6,19 @@ from utils.sqlite_utils import connect_to_database
 import tempfile
 from datetime import datetime
 
+# Helper function to create a metric circle with text below
+def create_metric_circle(value, title, color):
+    fig, ax = plt.subplots(figsize=(3, 3))
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(-1, 1)
+    circle = plt.Circle((0, 0), 0.8, color=color, ec="black", lw=1.5)
+    ax.add_artist(circle)
+    ax.text(0, 0, f"{value:.1f}", ha="center", va="center", fontsize=16, fontweight="bold", color="white")
+    ax.text(0, -1.2, title, ha="center", va="center", fontsize=10, fontweight="bold", color="black")
+    ax.axis("off")  # Remove axes for a cleaner look
+    return fig
+
+
 def generate_summary():
     # File upload widget with a unique key
     uploaded_file = st.file_uploader("Upload your SQLite3 file", type=["sqlite3", "db"], key="summary_file_uploader")
@@ -43,6 +56,69 @@ def generate_summary():
             # Display Summary
             st.write("### Books Read Summary")
             st.dataframe(df_books[["Book Title", "Total Pages Read", "Average Reading Speed (pages/hour)"]])
+
+            # Query to get data for year in review
+            year = datetime.now().year
+            query = f"""
+                SELECT 
+                    COUNT(DISTINCT date(datetime(psd.start_time, 'unixepoch', 'localtime'))) AS unique_days_reading,
+                    COUNT(DISTINCT b.id) AS books_completed,
+                    SUM(psd.duration) / 3600.0 AS total_hours_reading,  -- Total time in hours
+                    COUNT(DISTINCT psd.page) AS total_pages_read
+                FROM page_stat_data psd
+                JOIN book b ON psd.id_book = b.id
+                WHERE strftime('%Y', datetime(psd.start_time, 'unixepoch', 'localtime')) = '{year}'
+            """
+            cursor.execute(query)
+            results = cursor.fetchone()
+
+            # Unpack results
+            unique_days_reading, books_completed, total_hours_reading, total_pages_read = results
+
+            # Calculated metrics
+            avg_time_per_day = total_hours_reading * 60 / unique_days_reading if unique_days_reading else 0  # In minutes
+            avg_pages_per_day = total_pages_read / unique_days_reading if unique_days_reading else 0
+            avg_reading_speed = total_pages_read / total_hours_reading if total_hours_reading else 0  # Pages per hour
+            avg_days_to_complete_book = unique_days_reading / books_completed if books_completed else 0
+
+            # Display metrics in colored circles
+            st.write("### Year in Review Metrics")
+            col1, col2 = st.columns(2)
+
+            # Average Time Spent Reading Per Day
+            with col1:
+                fig = create_metric_circle(avg_time_per_day, "Avg Time Per Day (mins)", "skyblue")
+                st.pyplot(fig)
+
+            # Average Pages Read Per Day
+            with col2:
+                fig = create_metric_circle(avg_pages_per_day, "Avg Pages Per Day", "coral")
+                st.pyplot(fig)
+
+            col3, col4 = st.columns(2)
+
+            # Average Reading Speed
+            with col3:
+                fig = create_metric_circle(avg_reading_speed, "Avg Reading Speed (pages/hr)", "limegreen")
+                st.pyplot(fig)
+
+            # Average Days to Complete a Book
+            with col4:
+                fig = create_metric_circle(avg_days_to_complete_book, "Avg Days to Complete a Book", "gold")
+                st.pyplot(fig)
+                
+            # Total Books Completed
+            fig, ax = plt.subplots(figsize=(2.5, 2.5))  # Slightly smaller figure size
+            circle = plt.Circle((0, 0), 0.6, color="orchid", ec="black", lw=1.2)  # Smaller radius
+            ax.add_artist(circle)
+            ax.text(0, 0, f"{books_completed}", ha="center", va="center", fontsize=14, fontweight="bold", color="white")
+            ax.text(0, -0.9, "Books Completed", ha="center", va="center", fontsize=9, fontweight="bold", color="black")
+            ax.set_xlim(-1, 1)
+            ax.set_ylim(-1, 1)
+            ax.axis("off")  # Remove axes for a cleaner look
+            st.pyplot(fig)
+
+
 
             # Query for "Year in Review"
             year = datetime.now().year
