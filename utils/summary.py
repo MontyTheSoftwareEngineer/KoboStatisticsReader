@@ -74,26 +74,17 @@ def generate_summary():
                 ax.set_xlabel("Month")
                 ax.set_ylabel("Books Read")
                 ax.set_title(f"Books Read in {year}")
-                # Annotate bars with values
-                for bar in bars:
-                    ax.text(
-                        bar.get_x() + bar.get_width() / 2,  # Center horizontally
-                        bar.get_height() + 0.2,  # Slightly above the bar
-                        f"{int(bar.get_height())}",  # The value to display
-                        ha="center",
-                        fontsize=10,
-                        color="black",
-                    )
                 st.pyplot(fig)
             else:
                 st.write("No books read in the current year.")
 
-            # Timeline Query: Pages Read Per Day
+            # Timeline Query: Pages Read Per Day (Current Year)
             timeline_query = """
                 SELECT 
                     date(datetime(psd.start_time, 'unixepoch', 'localtime')) AS reading_date,
                     COUNT(DISTINCT psd.page) AS pages_read
                 FROM page_stat_data psd
+                WHERE strftime('%Y', datetime(psd.start_time, 'unixepoch', 'localtime')) = strftime('%Y', 'now')
                 GROUP BY reading_date
                 ORDER BY reading_date;
             """
@@ -105,17 +96,56 @@ def generate_summary():
             df_timeline["Date"] = pd.to_datetime(df_timeline["Date"])
 
             # Plot Timeline
-            st.write("### Timeline: Pages Read Per Day")
+            st.write("### Year Recap Timeline: Pages Read Per Day")
             if not df_timeline.empty:
                 fig, ax = plt.subplots(figsize=(12, 6))
                 ax.plot(df_timeline["Date"], df_timeline["Pages Read"], marker="o", linestyle="-", color="green")
                 ax.set_xlabel("Date")
                 ax.set_ylabel("Pages Read")
-                ax.set_title("Timeline: Pages Read Per Day")
+                ax.set_title("Timeline: Pages Read Per Day (Current Year)")
                 ax.grid(True)
+
                 st.pyplot(fig)
             else:
-                st.write("No reading activity found for the timeline.")
+                st.write("No reading activity found for the current year.")
+
+
+            # Query for "Activity by Day of the Week (Current Year)"
+            dow_query = """
+                SELECT 
+                    strftime('%w', datetime(psd.start_time, 'unixepoch', 'localtime')) AS day_of_week,
+                    SUM(psd.duration) / 60.0 AS total_minutes_read
+                FROM page_stat_data psd
+                WHERE strftime('%Y', datetime(psd.start_time, 'unixepoch', 'localtime')) = strftime('%Y', 'now')
+                GROUP BY day_of_week
+                ORDER BY day_of_week;
+            """
+            cursor.execute(dow_query)
+            dow_data = cursor.fetchall()
+
+            # Create DataFrame for Days of the Week
+            df_dow = pd.DataFrame(dow_data, columns=["Day of Week", "Minutes Read"])
+            df_dow["Day of Week"] = df_dow["Day of Week"].astype(int)  # Ensure numeric for mapping
+            df_dow["Day Name"] = df_dow["Day of Week"].map({
+                0: "Sunday", 1: "Monday", 2: "Tuesday", 3: "Wednesday",
+                4: "Thursday", 5: "Friday", 6: "Saturday"
+            })
+            df_dow = df_dow.sort_values("Day of Week")  # Ensure correct order
+
+            # Plot Bar Chart for Days of the Week (Current Year)
+            st.write("### Reading Activity by Day of the Week (Current Year)")
+            if not df_dow.empty:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                bars = ax.bar(df_dow["Day Name"], df_dow["Minutes Read"], color="skyblue")
+                ax.set_xlabel("Day of the Week")
+                ax.set_ylabel("Minutes Read")
+                ax.set_title("Reading Activity by Day of the Week (Current Year)")
+
+
+                st.pyplot(fig)
+            else:
+                st.write("No reading activity data available for the current year.")
+
 
             # Query for "Minutes Read Per Month"
             minutes_query = """
@@ -139,25 +169,22 @@ def generate_summary():
             all_months = pd.date_range(start=f"{current_year}-01-01", end=f"{current_year}-12-31", freq="MS")
             df_minutes = df_minutes.set_index("Month").reindex(all_months, fill_value=0).rename_axis("Month").reset_index()
 
-            # Plot Line Graph
+            # Plot Bar Graph
             st.write("### Minutes Read Per Month (Spanning the Year)")
             if not df_minutes.empty:
                 fig, ax = plt.subplots(figsize=(12, 6))
-                ax.plot(df_minutes["Month"], df_minutes["Minutes Read"], marker="o", linestyle="-", color="blue")
+                bars = ax.bar(df_minutes["Month"].dt.strftime('%b'), df_minutes["Minutes Read"], color="blue")
                 ax.set_xlabel("Month")
                 ax.set_ylabel("Minutes Read")
                 ax.set_title("Minutes Read Per Month (Spanning the Year)")
-                ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter("%b"))  # Format X-axis as "Month"
-                ax.xaxis.set_major_locator(plt.matplotlib.dates.MonthLocator())  # Show ticks for each month
+                ax.set_xticks(range(len(df_minutes["Month"])))
+                ax.set_xticklabels(df_minutes["Month"].dt.strftime("%b"))  # Month names as labels
                 plt.xticks(rotation=45, ha="right")  # Rotate X-axis labels
-
-                # Annotate Points with Values
-                for x, y in zip(df_minutes["Month"], df_minutes["Minutes Read"]):
-                    ax.text(x, y + 5, f"{y:.1f}", ha="center", fontsize=8, color="black")  # Display value above each point
 
                 st.pyplot(fig)
             else:
                 st.write("No reading activity found for this year.")
+
 
 
             # Graph: Pages Read Per Book
