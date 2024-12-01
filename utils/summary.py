@@ -44,25 +44,6 @@ def generate_summary():
             st.write("### Books Read Summary")
             st.dataframe(df_books[["Book Title", "Total Pages Read", "Average Reading Speed (pages/hour)"]])
 
-            # Graph: Pages Read Per Book
-            st.write("### Pages Read Per Book")
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.barh(df_books["Book Title"], df_books["Total Pages Read"], color="skyblue")
-            ax.set_xlabel("Total Pages Read")
-            ax.set_ylabel("Book Title")
-            ax.set_title("Pages Read Per Book")
-            st.pyplot(fig)
-
-            # Graph: Average Reading Speed Per Book
-            st.write("### Average Reading Speed (pages/hour)")
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.bar(df_books["Book Title"], df_books["Average Reading Speed (pages/hour)"], color="lightgreen")
-            ax.set_xticklabels(df_books["Book Title"], rotation=45, ha="right")
-            ax.set_xlabel("Book Title")
-            ax.set_ylabel("Reading Speed (pages/hour)")
-            ax.set_title("Average Reading Speed by Book")
-            st.pyplot(fig)
-
             # Query for "Year in Review"
             year = datetime.now().year
             query = f"""
@@ -87,15 +68,95 @@ def generate_summary():
             if not df_year.empty:
                 df_year = df_year.set_index("Month").reindex(range(1, 13), fill_value=0)  # Fill missing months
                 fig, ax = plt.subplots(figsize=(10, 6))
-                ax.bar(df_year.index, df_year["Books Read"], color="lightcoral")
+                bars = ax.bar(df_year.index, df_year["Books Read"], color="lightcoral")
                 ax.set_xticks(range(1, 13))
                 ax.set_xticklabels(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
                 ax.set_xlabel("Month")
                 ax.set_ylabel("Books Read")
                 ax.set_title(f"Books Read in {year}")
+                # Annotate bars with values
+                for bar in bars:
+                    ax.text(
+                        bar.get_x() + bar.get_width() / 2,  # Center horizontally
+                        bar.get_height() + 0.2,  # Slightly above the bar
+                        f"{int(bar.get_height())}",  # The value to display
+                        ha="center",
+                        fontsize=10,
+                        color="black",
+                    )
                 st.pyplot(fig)
             else:
                 st.write("No books read in the current year.")
+
+            # Timeline Query: Pages Read Per Day
+            timeline_query = """
+                SELECT 
+                    date(datetime(psd.start_time, 'unixepoch', 'localtime')) AS reading_date,
+                    COUNT(DISTINCT psd.page) AS pages_read
+                FROM page_stat_data psd
+                GROUP BY reading_date
+                ORDER BY reading_date;
+            """
+            cursor.execute(timeline_query)
+            timeline_data = cursor.fetchall()
+
+            # Create DataFrame for timeline
+            df_timeline = pd.DataFrame(timeline_data, columns=["Date", "Pages Read"])
+            df_timeline["Date"] = pd.to_datetime(df_timeline["Date"])
+
+            # Plot Timeline
+            st.write("### Timeline: Pages Read Per Day")
+            if not df_timeline.empty:
+                fig, ax = plt.subplots(figsize=(12, 6))
+                ax.plot(df_timeline["Date"], df_timeline["Pages Read"], marker="o", linestyle="-", color="green")
+                ax.set_xlabel("Date")
+                ax.set_ylabel("Pages Read")
+                ax.set_title("Timeline: Pages Read Per Day")
+                ax.grid(True)
+                st.pyplot(fig)
+            else:
+                st.write("No reading activity found for the timeline.")
+
+            # Graph: Pages Read Per Book
+            st.write("### Pages Read Per Book")
+            fig, ax = plt.subplots(figsize=(10, 6))
+            bars = ax.barh(df_books["Book Title"], df_books["Total Pages Read"], color="skyblue")
+            ax.set_xlabel("Total Pages Read")
+            ax.set_ylabel("Book Title")
+            ax.set_title("Pages Read Per Book")
+            # Annotate bars with values
+            for bar in bars:
+                ax.text(
+                    bar.get_width() + 1,  # Position slightly to the right of the bar
+                    bar.get_y() + bar.get_height() / 2,  # Center vertically
+                    f"{int(bar.get_width())}",  # The value to display
+                    va="center",  # Vertical alignment
+                    fontsize=10,  # Font size
+                    color="black",  # Text color
+                )
+            st.pyplot(fig)
+
+            # Graph: Average Reading Speed Per Book
+            st.write("### Average Reading Speed (pages/hour)")
+            fig, ax = plt.subplots(figsize=(10, 6))
+            bars = ax.bar(df_books["Book Title"], df_books["Average Reading Speed (pages/hour)"], color="lightgreen")
+            ax.set_xticklabels(df_books["Book Title"], rotation=45, ha="right")
+            ax.set_xlabel("Book Title")
+            ax.set_ylabel("Reading Speed (pages/hour)")
+            ax.set_title("Average Reading Speed by Book")
+            # Annotate bars with values
+            for bar in bars:
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,  # Position at the center of the bar
+                    bar.get_height() + 0.1,  # Slightly above the bar
+                    f"{bar.get_height():.2f}",  # The value to display (formatted)
+                    ha="center",  # Horizontal alignment
+                    fontsize=10,
+                    color="black",
+                )
+            st.pyplot(fig)
+
+            
 
         except sqlite3.Error as e:
             st.error(f"An error occurred: {e}")
