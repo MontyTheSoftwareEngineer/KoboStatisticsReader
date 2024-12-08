@@ -249,57 +249,71 @@ def plot_avg_reading_speed_per_book(df_books):
                 f"{bar.get_height():.2f}", ha="center", fontsize=10, color="black")
     st.pyplot(fig)
 
-def plot_past_14_days_reading(conn):
+def plot_past_30_days_reading(conn):
     """
-    Plot time spent reading over the past 14 days based on database data.
-    
-    Args:
-        conn: SQLite connection object.
+    Plot time spent reading over the past 30 days based on database data
+    and display a summary of total minutes read and average minutes per day.
     """
     try:
-        # Query for time spent reading over the past 14 days
-        past_14_days_query = """
+        # Get the system's timezone offset
+        from datetime import datetime, timezone, timedelta
+        import pytz
+
+        local_tz = datetime.now().astimezone().tzinfo
+        local_offset_seconds = local_tz.utcoffset(datetime.now()).total_seconds()
+
+        # Query for time spent reading over the past 30 days, adjusted for the system timezone
+        past_30_days_query = f"""
             SELECT 
-                date(datetime(psd.start_time, 'unixepoch', 'localtime')) AS reading_date,
+                date(datetime(psd.start_time, 'unixepoch', '{local_offset_seconds} seconds')) AS reading_date,
                 SUM(psd.duration) / 60.0 AS minutes_read
             FROM page_stat_data psd
-            WHERE date(datetime(psd.start_time, 'unixepoch', 'localtime')) >= date('now', '-14 days')
+            WHERE date(datetime(psd.start_time, 'unixepoch', '{local_offset_seconds} seconds')) >= date('now', '-30 days', '{local_offset_seconds} seconds')
             GROUP BY reading_date
             ORDER BY reading_date;
         """
         cursor = conn.cursor()
-        cursor.execute(past_14_days_query)
-        past_14_days_data = cursor.fetchall()
+        cursor.execute(past_30_days_query)
+        past_30_days_data = cursor.fetchall()
 
         # Create DataFrame from raw query results
-        df_past_14_days = pd.DataFrame(past_14_days_data, columns=["Date", "Minutes Read"])
-        df_past_14_days["Date"] = pd.to_datetime(df_past_14_days["Date"])  # Ensure dates are parsed correctly
+        df_past_30_days = pd.DataFrame(past_30_days_data, columns=["Date", "Minutes Read"])
+        df_past_30_days["Date"] = pd.to_datetime(df_past_30_days["Date"])  # Ensure dates are parsed correctly
 
         # Normalize dates to midnight (strip time component)
-        df_past_14_days["Date"] = df_past_14_days["Date"].dt.normalize()
+        df_past_30_days["Date"] = df_past_30_days["Date"].dt.normalize()
 
-        # Ensure all days in the past 14 days are included
+        # Ensure all days in the past 30 days are included
         today = datetime.now()
-        date_range = pd.date_range(end=today, periods=14)  # Generate 14 consecutive days up to today
+        date_range = pd.date_range(end=today, periods=30)  # Generate 30 consecutive days up to today
         df_date_range = pd.DataFrame(date_range, columns=["Date"])
         df_date_range["Date"] = df_date_range["Date"].dt.normalize()  # Strip time component
 
         # Merge query results with the complete date range
-        df_past_14_days = pd.merge(df_date_range, df_past_14_days, on="Date", how="left").fillna(0)  # Fill missing days with 0
-        df_past_14_days["Minutes Read"] = df_past_14_days["Minutes Read"].astype(float)  # Ensure numeric type for plotting
+        df_past_30_days = pd.merge(df_date_range, df_past_30_days, on="Date", how="left").fillna(0)  # Fill missing days with 0
+        df_past_30_days["Minutes Read"] = df_past_30_days["Minutes Read"].astype(float)  # Ensure numeric type for plotting
 
+        # Calculate totals and averages
+        total_minutes = df_past_30_days["Minutes Read"].sum()
+        avg_minutes_per_day = total_minutes / 30
 
-        # Plot a bar graph for time spent reading over the past 14 days
-        st.write("### Time Spent Reading Over the Past 14 Days")
+        # Display summary metrics
+        st.write("### Your 30-Day Reading Summary")
+        col1, col2 = st.columns(2)
+        col1.metric("Total Minutes Read", f"{int(total_minutes)} mins")
+        col2.metric("Average Minutes/Day", f"{avg_minutes_per_day:.1f} mins/day")
+
+        # Plot a bar graph for time spent reading over the past 30 days
+        st.write("### Time Spent Reading Over the Past 30 Days")
         fig, ax = plt.subplots(figsize=(12, 6))
 
         # Create a bar chart
-        bars = ax.bar(df_past_14_days["Date"].dt.strftime("%b %d"), df_past_14_days["Minutes Read"], color="skyblue")
+        bars = ax.bar(df_past_30_days["Date"].dt.strftime("%b %d"), df_past_30_days["Minutes Read"], color="skyblue")
 
         # Customize the chart
         ax.set_xlabel("Date")
         ax.set_ylabel("Minutes Read")
-        ax.set_title("Reading Activity Over the Past 14 Days")
+        ax.set_title("Reading Activity Over the Past 30 Days")
         plt.xticks(rotation=45, ha="right")  # Rotate X-axis labels for better readability
 
         # Annotate the bars with exact values
@@ -325,6 +339,7 @@ def plot_past_14_days_reading(conn):
         conn.close()
 
 
+
 def generate_summary():
     uploaded_file = st.file_uploader("Upload your SQLite3 file", type=["sqlite3", "db"], key="summary_file_uploader")
 
@@ -343,7 +358,7 @@ def generate_summary():
             plot_pages_read_timeline(conn)
             plot_reading_activity_by_day_of_week(conn)
             plot_minutes_read_per_month(conn)
-            plot_past_14_days_reading(conn)
+            plot_past_30_days_reading(conn)
             plot_pages_read_per_book(df_books)
             plot_avg_reading_speed_per_book(df_books)
 
